@@ -185,7 +185,8 @@ class Chef
 		new_server_xml = ERB.new(get_server_xml_erb).result
 		server = connection.define_domain_xml(new_server_xml)
 		mac=get_mac(server)
-		puts "created #{Chef::Config[:knife][:hostname]} with #{Chef::Config[:knife][:cpus]} CPUS and #{Chef::Config[:knife][:memory]} MB RAM which has the MAC address of #{mac}"
+		request_response = open("http://10.1.4.194/networkmanager/inc/request_ip?rr_name=#{Chef::Config[:knife][:hostname]}&mac_address=#{mac}")
+		puts "created #{Chef::Config[:knife][:hostname]} with #{Chef::Config[:knife][:cpus]} CPUS and #{Chef::Config[:knife][:memory]} MB RAM which has the MAC address of #{mac} with DNS record #{request_response.read}"
 		if $script==FALSE
 			puts "\n\nThe system has been created, but has yet to be started. Please take some time to add the system Cobbler. Press [enter] when you are ready to continue..."
 			response = STDIN.gets

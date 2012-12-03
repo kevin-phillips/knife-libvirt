@@ -1,0 +1,16 @@
+= Knife Libvirt Change Log
+
+= BACKGROUND:
+
+Company needed a better way to deploy and control virtual machines via libvirt that is integrated with the configuration manager. I developed a quick framework for deploying virtual machines within our infrastructure.
+
+= CHANGES:
+
+As of now, all changes have been applied only to the server and storage components of the plugin. I find that the other components are unnecessary for my configuration (everyone's needs are different).
+
+* No more hardcoded URIs. I consider the URI to be configuration value (not an option), therefore it should be set in the .chef/knife.rb. Not set in stone, but it helped when I was rewriting sections.
+* No more hardcoded TLS
+* Reformatted results of hypervisor query.
+* Alterred Domain XML to fit my configuration
+* Added function to report the MAC address of the newly created node
+* Alterred options

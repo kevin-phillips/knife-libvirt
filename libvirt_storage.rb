@@ -2,30 +2,71 @@ require 'chef/knife'
 
 class Chef
   class Knife
-    class LibvirtStoragePoolList < Knife
+    class LibvirtStorageVolumeCreate < Knife
+		deps do
+			require 'libvirt'
+		end
+		banner "knife libvirt storage volume create (options)"
+		option :size,
+			:short => "-s SIZE",
+			:long  => "--size SIZE",
+			:description => "The size of the volume in GB",
+			:proc => Proc.new { |s| Chef::Config[:knife][:size] = s },
+			:default => "10"
+		option :name,
+			:short => "-n NAME",
+			:long  => "--name NAME",
+			:description => "The name of the volume with extension",
+			:proc => Proc.new { |n| Chef::Config[:knife][:name] = n }
+		option :type,
+			:short	=> "-T TYPE",
+			:long	=> "--type TPYE",
+			:description	=> "Specify the type of storage to allocate for the new node",
+			:proc => Proc.new { |t| Chef::Config[:knife][:type] = t }	
+		
+		option :pool,
+			:short	=> "-P STORAGE_POOL",
+			:long	=> "--pool STORAGE_POOL",
+			:description => "Specify pool within which to create volume",
+			:proc => Proc.new { |l| Chef::Config[:knife][:storage_pool] = l }
+
+		def run
+			puts "Allocating storage..."
+			host = Chef::Config[:libvirt_uri]
+			connection = Libvirt::open(host)
+			storage_volume_xml = <<-EOF
+				<volume>
+					<name>#{Chef::Config[:knife][:name]}.img</name>
+					<allocation>0</allocation>
+					<capacity unit="G">#{Chef::Config[:knife][:size]}</capacity>
+					<target>
+						<path>#{Chef::Config[:libvirt_storage_path]}/#{Chef::Config[:knife][:name]}.img</path>
+						<format type='#{Chef::Config[:knife][:type]}'/>
+					</target>
+				</volume>
+			EOF
+			
+			pool_name = "#{Chef::Config[:knife][:storage_pool]}"
+			pool = connection.lookup_storage_pool_by_name(pool_name)
+			vol = pool.create_vol_xml(storage_volume_xml)
+			pool.refresh
+			puts "Created a #{Chef::Config[:knife][:type]} volume of size #{Chef::Config[:knife][:size]} GB located at #{Chef::Config[:libvirt_storage_path]}/#{Chef::Config[:knife][:name]}.img on the hypervisor"
+			#storage_pool.list_volumes.each do |volume|
+            		#vols = storage_pool.lookup_volume_by_name(volume)
+            		#puts "#{volume} #{to_mb(vols.info.allocation)} MB/#{to_mb(vols.info.capacity)} MB"
+          		#end
+          		puts "-"*80
+		end
+	end
+	class LibvirtStoragePoolList < Knife
       deps do
         require 'libvirt'
       end
-          
       banner "knife libvirt storage pool list (options)"
 
-#TODO re-enable arguments with defaults from knife.rb      
-      # option :host,
-      #   :short => "-h HOST",
-      #   :long => "--host HOST",
-      #   :description => "The Libvirt host",
-      #   :proc => Proc.new { |h| Chef::Config[:knife][:libvirt_host] = h}
-        
-      # 
-      # option :libvirt_tls_path,
-      #   :short => "-t PATH",
-      #   :long => "--tls-path PATH",
-      #   :description => "The path to your libvirt TLS keys",
-      #   :proc => Proc.new { |t| Chef::Config[:knife][:libvirt_tls_path] = t},
-      #   :default => Chef::Config[:knife][:libvirt_tls_path]            
       def run
-        host = Chef::Config[:knife][:libvirt_host]
-        uri = "qemu+tls://#{host}/system?pkipath=#{Chef::Config[:knife][:libvirt_tls_path]}/#{host}"
+	puts "Listing storage pools..."
+        uri = Chef::Config[:libvirt_uri]
         connection = Libvirt::open(uri)
         puts connection.list_storage_pools
       end
@@ -42,26 +83,25 @@ class Chef
       banner "knife libvirt storage pool show POOL (options)"
       
       def to_gb(kb)
-        (kb/1073741824.0).round(2)
+        (kb/1073741824.0).round()
       end
 
       def run
-        host = "qemu+tls://#{Chef::Config[:knife][:libvirt_host]}/system?pkipath=#{Chef::Config[:knife][:libvirt_tls_path]}/#{Chef::Config[:knife][:libvirt_host]}"
-        connection = Libvirt::open(host)
+        puts "Looking up storage pool.."
+	host = "#{Chef::Config[:libvirt_uri]}"
+		connection = Libvirt::open(host)
         @name_args.each do |pool_name|
           pool = connection.lookup_storage_pool_by_name(pool_name)
-          puts "Name: #{pool.name}"
+          puts "\tName: #{pool.name}"
           xml = Nokogiri::XML(pool.xml_desc)
-          puts "Path: #{xml.xpath('//target/path').inner_text}"
-          puts "UUID: #{pool.uuid}"
-          puts "---------------"
-          puts "Volumes: #{pool.num_of_volumes}"
-          puts "Autostart: #{pool.autostart?}"
-          puts "Persistent: #{pool.persistent?}"
-          puts "Capacity: #{to_gb(pool.info.capacity)} GB"
-          puts "Allocated: #{to_gb(pool.info.allocation)} GB"
-          puts "Available: #{to_gb(pool.info.available)} GB"
-          puts "======================="
+	  puts "\tPath: #{xml.xpath('//target/path').inner_text}\tUUID: #{pool.uuid}"
+          puts "\tVolumes: #{pool.num_of_volumes}"
+          #puts "Autostart: #{pool.autostart?}"
+          #puts "Persistent: #{pool.persistent?}"
+          puts "\tCapacity: #{to_gb(pool.info.capacity)} GB"
+          puts "\tAllocated: #{to_gb(pool.info.allocation)} GB"
+          puts "\tAvailable: #{to_gb(pool.info.available)} GB"
+          puts "-"*80
           puts
         end
       end
@@ -77,82 +117,56 @@ class Chef
       banner "knife libvirt storage volume list (options)"
       
       def to_mb(kb)
-        (kb/1024.0).round(2)
+        (kb/1024.0).round()
       end
       
       def run
-        host = "qemu+tls://#{Chef::Config[:knife][:libvirt_host]}/system?pkipath=#{Chef::Config[:knife][:libvirt_tls_path]}/#{Chef::Config[:knife][:libvirt_host]}"
+	puts "Listing volumes..."
+        host = "#{Chef::Config[:libvirt_uri]}"
         connection = Libvirt::open(host)
         connection.list_storage_pools.each do |pool_name|
-          puts "#{pool_name}:"
-          puts "-----------------------"
+	  puts "-"*80
+	  puts "\t#{pool_name}:"
           storage_pool = connection.lookup_storage_pool_by_name(pool_name)
           storage_pool.list_volumes.each do |volume|
-            vol = storage_pool.lookup_volume_by_name(volume)
-            puts "#{volume} #{to_mb(vol.info.allocation)} MB/#{to_mb(vol.info.capacity)} MB"
+            	vol = storage_pool.lookup_volume_by_name(volume)
+		puts "\t\t#{volume} #{to_mb(vol.info.allocation)} MB/#{to_mb(vol.info.capacity)} MB"
           end
-          puts "======================="
+          puts "-"*80
         end
       end
       
-      class LibvirtStorageVolumeShow < Knife
-        deps do
-          require 'chef/knife/bootstrap'
-          Chef::Knife::Bootstrap.load_deps
-          require 'libvirt'
-        end
+	class LibvirtStorageVolumeShow < Knife
+        	deps do
+          		require 'chef/knife/bootstrap'
+          		Chef::Knife::Bootstrap.load_deps
+          		require 'libvirt'
+        	end
     
-        banner "knife libvirt storage volume show POOL VOLUME (options)"
+        	banner "knife libvirt storage volume show POOL VOLUME (options)"
 
-        def to_mb(kb)
-          (kb/1024.0).round(2)
-        end
-
-        def run
-          host = "qemu+tls://#{Chef::Config[:knife][:libvirt_host]}/system?pkipath=#{Chef::Config[:knife][:libvirt_tls_path]}/#{Chef::Config[:knife][:libvirt_host]}"
-          connection = Libvirt::open(host)
-          @name_args.each_slice(2) do |pool_name, volume_name|
-            volume = connection.lookup_storage_pool_by_name(pool_name).lookup_volume_by_name(volume_name)
-            puts "Name: #{volume.name}"
-            puts "Pool: #{volume.pool.name}"
-            puts "---------------"
-            puts "Capacity:  #{to_mb(volume.info.capacity)} MB"
-            puts "Allocated: #{to_mb(volume.info.allocation)} MB"
-            puts "Path: #{volume.path}"
-            puts "Key:  #{volume.key}"
-            puts "======================="
-            puts
-          end
-        end
-        
-        class LibvirtStorageMediaList < Knife
-          deps do
-            require 'libvirt'
-          end
-
-          banner "knife libvirt storage media list (options)"
-          
-          def bytes_to_mb(bytes)
-            (bytes/1048576.0).round(2)
-          end
-          
-          def run
-            host = Chef::Config[:knife][:libvirt_host]
-            uri = "qemu+tls://#{host}/system?pkipath=#{Chef::Config[:knife][:libvirt_tls_path]}/#{host}"
-            connection = Libvirt::open(uri)
-            
-            storage_pool = connection.lookup_storage_pool_by_name("media")
-            storage_pool.refresh
-            storage_pool.list_volumes.each do |volume|
-              vol = storage_pool.lookup_volume_by_name(volume)
-              puts "#{volume} #{bytes_to_mb(vol.info.allocation)} MB"
-              puts "#{vol.path}"
-              puts "#{File.dirname vol.path}"
-            end
-          end
-        end
-        
-      end
+        	def to_mb(kb)
+			(kb/1024.0).round()
+		end
+		def run
+			puts "Looking up volume..."
+			host = "#{Chef::Config[:libvirt_uri]}"
+			connection = Libvirt::open(host)
+          		@name_args.each_slice(2) do |pool_name, volume_name|
+            		volume = connection.lookup_storage_pool_by_name(pool_name).lookup_volume_by_name(volume_name)
+            		puts "-"*80
+			puts "\tName: #{volume.name}"
+            		puts "\tPool: #{volume.pool.name}"
+         		puts
+            		puts "\t\tCapacity:  #{to_mb(volume.info.capacity)} MB"
+            		puts "\t\tAllocated: #{to_mb(volume.info.allocation)} MB"
+            		puts "\t\tPath: #{volume.path}"
+            		puts "\t\tKey:  #{volume.key}"
+            		puts "-"*80
+            		puts
+		end
+	end       
     end
   end
+end
 end
